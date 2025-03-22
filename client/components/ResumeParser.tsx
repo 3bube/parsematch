@@ -90,7 +90,7 @@ export function ResumeParser() {
     // Simulate matching process
     // In a real app, this would be done by your backend
     const mockMatches: ResumeMatch[] = processedResumes.map((resume) => {
-      const mockSkills = resume.skills;
+      const mockSkills = resume.skills || [];
 
       const matchedSkills = mockSkills.filter(
         (skill) =>
