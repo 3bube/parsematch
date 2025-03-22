@@ -8,6 +8,8 @@ import { ResumeUploader } from "@/components/ResumeUploader";
 import { JobCriteriaForm } from "@/components/JobCriteriaForm";
 import { ResumeMatches } from "@/components/ResumeMatches";
 import type { JobCriteria, ResumeMatch, ResumeData } from "@/types/resume";
+import { parseResume, fetchGithub, GitHubData } from "@/api/resume";
+import { Input } from "@/components/ui/input";
 
 export function ResumeParser() {
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
@@ -15,6 +17,10 @@ export function ResumeParser() {
   const [jobCriteria, setJobCriteria] = useState<JobCriteria | null>(null);
   const [matches, setMatches] = useState<ResumeMatch[]>([]);
   const [activeTab, setActiveTab] = useState("upload");
+  const [processedResumes, setProcessedResumes] = useState<ResumeData[]>([]);
+  const [githubUsername, setGithubUsername] = useState("");
+  const [isLoadingGithub, setIsLoadingGithub] = useState(false);
+  const [githubData, setGithubData] = useState<GitHubData | null>(null);
 
   const handleFilesUpload = async (files: File[]) => {
     setIsUploading(true);
@@ -35,50 +41,42 @@ export function ResumeParser() {
 
       setUploadedFiles((prev) => [...prev, ...validFiles.map((f) => f.name)]);
 
-      // Simulate parsing multiple resumes
-      // In a real app, you would send the files to your backend API
-      await Promise.all(
-        validFiles.map(async (file) => {
-          console.log(file);
-          // Simulate API call delay
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Process each file using the parseResume API
+      const resumeDataPromises = validFiles.map(async (file) => {
+        // Create FormData to send the file
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("filename", file.name);
 
-          // Mock data for demonstration
-          const mockData: ResumeData = {
+        // Call the API
+        try {
+          const resumeData = await parseResume({
+            file: formData,
+            filename: file.name,
+          });
+          return resumeData;
+        } catch (error) {
+          console.error(`Error parsing resume ${file.name}:`, error);
+          // Return a placeholder for failed parsing
+          return {
             personalInfo: {
-              name: `Candidate ${Math.floor(Math.random() * 100)}`,
-              email: `candidate${Math.floor(Math.random() * 100)}@example.com`,
-              phone: "(555) 123-4567",
+              name: `Failed to parse ${file.name}`,
+              email: "N/A",
+              phone: "N/A",
             },
-            summary:
-              "Experienced professional with a track record of success...",
-            experience: [
-              {
-                title: "Senior Developer",
-                company: "Tech Corp",
-                location: "Remote",
-                startDate: "2020",
-                endDate: "Present",
-                description: "Led development of key projects...",
-              },
-            ],
-            skills: [
-              "JavaScript",
-              "Python",
-              "React",
-              "Node.js",
-              "AWS",
-              "Docker",
-              "Kubernetes",
-              "Git",
-            ]
-              .sort(() => Math.random() - 0.5)
-              .slice(0, 5), // Randomly select 5 skills
+            summary: "Failed to parse this resume.",
+            experience: [],
+            skills: [],
           };
+        }
+      });
 
-          return mockData;
-        })
-      );
+      // Wait for all resumes to be processed
+      const processedResumes = await Promise.all(resumeDataPromises);
+      console.log("Processed resumes:", processedResumes);
+
+      // Store the processed resume data for later matching
+      setProcessedResumes(processedResumes);
     } catch (err) {
       console.error(err);
     } finally {
@@ -91,19 +89,8 @@ export function ResumeParser() {
 
     // Simulate matching process
     // In a real app, this would be done by your backend
-    const mockMatches: ResumeMatch[] = uploadedFiles.map((fileName) => {
-      const mockSkills = [
-        "JavaScript",
-        "Python",
-        "React",
-        "Node.js",
-        "AWS",
-        "Docker",
-        "Kubernetes",
-        "Git",
-      ]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 5); // Randomly select 5 skills
+    const mockMatches: ResumeMatch[] = processedResumes.map((resume) => {
+      const mockSkills = resume.skills;
 
       const matchedSkills = mockSkills.filter(
         (skill) =>
@@ -123,24 +110,11 @@ export function ResumeParser() {
       );
 
       return {
-        fileName,
-        personalInfo: {
-          name: `Candidate ${Math.floor(Math.random() * 100)}`,
-          email: `candidate${Math.floor(Math.random() * 100)}@example.com`,
-          phone: "(555) 123-4567",
-        },
-        summary: "Experienced professional with a track record of success...",
-        experience: [
-          {
-            title: "Senior Developer",
-            company: "Tech Corp",
-            location: "Remote",
-            startDate: "2020",
-            endDate: "Present",
-            description: "Led development of key projects...",
-          },
-        ],
-        skills: mockSkills,
+        fileName: resume.personalInfo.name,
+        personalInfo: resume.personalInfo,
+        summary: resume.summary,
+        experience: resume.experience,
+        skills: resume.skills,
         matchScore,
         skillMatches: {
           matched: matchedSkills,
@@ -153,10 +127,29 @@ export function ResumeParser() {
     setActiveTab("matches");
   };
 
+  const handleFetchGithub = async () => {
+    if (!githubUsername.trim()) return;
+
+    setIsLoadingGithub(true);
+    try {
+      const data = await fetchGithub(githubUsername.trim());
+      setGithubData(data);
+      console.log("GitHub data:", data);
+      // You could enhance the resume data with GitHub information here
+    } catch (error) {
+      console.error("Failed to fetch GitHub data:", error);
+    } finally {
+      setIsLoadingGithub(false);
+    }
+  };
+
   const handleReset = () => {
     setUploadedFiles([]);
     setJobCriteria(null);
     setMatches([]);
+    setProcessedResumes([]);
+    setGithubUsername("");
+    setGithubData(null);
     setActiveTab("upload");
   };
 
@@ -184,7 +177,42 @@ export function ResumeParser() {
               isUploading={isUploading}
               uploadedFiles={uploadedFiles}
             />
-            <JobCriteriaForm onSubmit={handleJobCriteriaSubmit} />
+            <div className="space-y-6">
+              <JobCriteriaForm onSubmit={handleJobCriteriaSubmit} />
+
+              <Card className="p-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">GitHub Integration</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enhance resume analysis with GitHub data
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={githubUsername}
+                      onChange={(e) => setGithubUsername(e.target.value)}
+                      placeholder="GitHub username"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleFetchGithub}
+                      disabled={isLoadingGithub || !githubUsername.trim()}
+                    >
+                      {isLoadingGithub ? "Loading..." : "Fetch"}
+                    </Button>
+                  </div>
+                  {githubData && (
+                    <div className="p-3 bg-muted rounded-md">
+                      <p className="font-medium">
+                        GitHub data fetched successfully!
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Data will be used to enhance resume analysis.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 

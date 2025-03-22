@@ -41,6 +41,11 @@ export function JobCriteriaForm({ onSubmit }: JobCriteriaFormProps) {
     }
   };
 
+  console.log("title", title);
+  console.log("description", description);
+  console.log("requiredSkills", requiredSkills);
+  console.log("preferredSkills", preferredSkills);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
